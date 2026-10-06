@@ -1,0 +1,17 @@
+- name: Install SSH common config
+  ansible.builtin.template:
+    src: common.conf.j2
+    dest: /etc/ssh/sshd_config.d/98-common.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Validate and reload SSH
+
+- name: Install SSH hardening drop-in
+  ansible.builtin.template:
+    src: hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Validate and reload SSH

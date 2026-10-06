@@ -1,0 +1,130 @@
+---
+- name: Install Tailscale repository signing key
+  ansible.builtin.get_url:
+    url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install Tailscale apt repository
+  ansible.builtin.deb822_repository:
+    name: tailscale
+    types: [deb]
+    uris: https://pkgs.tailscale.com/stable/ubuntu
+    suites: [noble]
+    components: [main]
+    signed_by: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    state: present
+
+- name: Install Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+
+- name: Enable persistent IPv4 forwarding for exit node
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_file: /etc/sysctl.d/99-tailscale-exit-node.conf
+    sysctl_set: true
+  when: tailscale_advertise_exit_node | bool
+
+- name: Enable persistent IPv6 forwarding for exit node
+  ansible.posix.sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: '1'
+    sysctl_file: /etc/sysctl.d/99-tailscale-exit-node.conf
+    sysctl_set: true
+  when: tailscale_advertise_exit_node | bool
+
+- name: Enable and start Tailscale
+  ansible.builtin.systemd_service:
+    name: tailscaled.service
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+- name: Read Tailscale status
+  ansible.builtin.command:
+    argv: [tailscale, status, --json]
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+  no_log: true
+
+- name: Record Tailscale enrollment state
+  ansible.builtin.set_fact:
+    tailscale_backend_state: "{{ (tailscale_status.stdout | default('{}') | from_json).BackendState | default('') if not ansible_check_mode and (tailscale_status.rc | default(1)) == 0 else '' }}"
+  no_log: true
+
+- name: Require Tailscale auth key for initial enrollment
+  ansible.builtin.assert:
+    that:
+      - vault_tailscale_auth_key is defined
+      - vault_tailscale_auth_key | length > 0
+    fail_msg: Set vault_tailscale_auth_key in encrypted group_vars/vps/vault.yml before initial enrollment.
+  when:
+    - tailscale_enroll | bool
+    - tailscale_backend_state != 'Running'
+    - not ansible_check_mode
+  no_log: true
+
+- name: Enroll Tailscale node
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - up
+      - "--auth-key={{ vault_tailscale_auth_key }}"
+      - "--hostname={{ tailscale_hostname }}"
+      - "--accept-dns={{ tailscale_accept_dns | bool | ternary('true', 'false') }}"
+      - "--advertise-exit-node={{ tailscale_advertise_exit_node | bool | ternary('true', 'false') }}"
+  when:
+    - tailscale_enroll | bool
+    - tailscale_backend_state != 'Running'
+    - not ansible_check_mode
+
+- name: Reconcile existing Tailscale preferences
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - set
+      - "--advertise-exit-node={{ tailscale_advertise_exit_node | bool | ternary('true', 'false') }}"
+      - "--accept-dns={{ tailscale_accept_dns | bool | ternary('true', 'false') }}"
+  when:
+    - tailscale_backend_state == 'Running'
+    - not ansible_check_mode
+  no_log: true
+
+- name: Read enrolled Tailscale status
+  ansible.builtin.command:
+    argv: [tailscale, status, --json]
+  register: tailscale_enrolled_status
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+  no_log: true
+
+- name: Verify Tailscale status after enrollment
+  ansible.builtin.assert:
+    that:
+      - tailscale_enrolled_status.rc == 0
+    fail_msg: Tailscale enrollment completed, but reading post-enrollment status failed.
+  when: not ansible_check_mode and tailscale_enroll | bool and tailscale_backend_state != 'Running'
+
+- name: Record enrolled Tailscale facts
+  ansible.builtin.set_fact:
+    tailscale_enrolled_backend_state: "{{ (tailscale_enrolled_status.stdout | default('{}') | from_json).BackendState | default('') if not ansible_check_mode and (tailscale_enrolled_status.rc | default(1)) == 0 else '' }}"
+    tailscale_dns_name: "{{ ((tailscale_enrolled_status.stdout | default('{}') | from_json).Self.DNSName | default('') | regex_replace('\\.$', '')) if not ansible_check_mode and (tailscale_enrolled_status.rc | default(1)) == 0 else '' }}"
+    tailscale_ipv4: "{{ ((tailscale_enrolled_status.stdout | default('{}') | from_json).TailscaleIPs | default([]) | select('match', '^100\\.') | list | first) | default('') if not ansible_check_mode and (tailscale_enrolled_status.rc | default(1)) == 0 else '' }}"
+  no_log: true
+
+- name: Require a running Tailscale node with a usable address
+  ansible.builtin.assert:
+    that:
+      - tailscale_enrolled_backend_state == 'Running'
+      - tailscale_dns_name | length > 0 or tailscale_ipv4 | length > 0
+    fail_msg: Tailscale must be Running and expose a MagicDNS name or Tailscale IPv4 address before the agent services are configured.
+  when: not ansible_check_mode

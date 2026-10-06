@@ -1,0 +1,55 @@
+{%- set enabled_plugins = {} -%}
+{%- for plugin in claude_code_plugins -%}
+{%- set _ = enabled_plugins.update({plugin: true}) -%}
+{%- endfor -%}
+{{ {
+  "env": {
+    "ANTHROPIC_BASE_URL": omniroute_base_url,
+    "ANTHROPIC_AUTH_TOKEN": vault_omniroute_token,
+    "ANTHROPIC_DEFAULT_MODEL": omniroute_model_daily,
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": omniroute_model_heavy,
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": omniroute_model_daily,
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": omniroute_model_quick,
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": omniroute_model_heavy,
+    "ANTHROPIC_SMALL_FAST_MODEL": omniroute_model_quick,
+    "CLAUDE_CODE_AUTO_MODE_SERVER": "0",
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "modelPicker": {
+    "options": [
+      {
+        "model": "vps-daily-coding",
+        "label": "Daily Coding (OmniRoute)",
+        "description": "Daily coding combo",
+        "behavesAs": "claude-sonnet-5"
+      },
+      {
+        "model": "vps-heavy-coding",
+        "label": "Heavy Coding (OmniRoute)",
+        "description": "Heavy reasoning combo",
+        "behavesAs": "claude-opus-5-5"
+      },
+      {
+        "model": "vps-quick-model",
+        "label": "Quick Model (OmniRoute)",
+        "description": "Fast/cheap combo for simple tasks",
+        "behavesAs": "claude-haiku-4-5"
+      },
+      {
+        "model": "vps-artistry-model",
+        "label": "Artistry (OmniRoute)",
+        "description": "Creative problem-solving combo",
+        "behavesAs": "claude-opus-5-5"
+      },
+      {
+        "model": "vps-visual-model",
+        "label": "Visual (OmniRoute)",
+        "description": "Frontend/visual combo",
+        "behavesAs": "claude-sonnet-5"
+      }
+    ]
+  },
+  "enabledPlugins": enabled_plugins,
+  "extraKnownMarketplaces": claude_code_marketplaces,
+  "theme": "dark"
+} | to_nice_json }}

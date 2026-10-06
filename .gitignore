@@ -1,0 +1,14 @@
+group_vars/vps/vault.yml
+.env
+.env.*
+.idea/
+.omo/
+.codegraph
+.codegraph/
+.opencode/
+.claude/
+.paseo_password
+
+roles/agent_config/templates/*
+!roles/agent_config/templates/*.j2
+!roles/agent_config/templates/*.example

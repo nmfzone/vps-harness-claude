@@ -1,0 +1,20 @@
+---
+vault_ansible_host: "x.x.x.x"
+vault_admin_user: "admin"
+vault_admin_group: "admin"
+vault_admin_authorized_key: "ssh-ed25519 AAAA... operator@example"
+vault_admin_password_hash: "REPLACE_WITH_SHA512_CRYPT_HASH"
+vault_tailscale_auth_key: "tskey-auth-replace-with-tailscale-auth-key"
+# Shared with Claude Code (ANTHROPIC_AUTH_TOKEN) and Hermes (OpenAI-compatible key).
+vault_omniroute_token: "sk-replace-with-omniroute-token"
+# Token from BotFather for an existing bot; never run another poller with it.
+vault_telegram_bot_token: "123456789:REPLACE_WITH_EXISTING_BOT_TOKEN"
+# Comma-separated numeric Telegram user IDs allowed to use the bot.
+vault_telegram_allowed_users: "123456789"
+# Optional: SSH Git hosts for the agent. Omit or set [] to skip SSH setup.
+# vault_agent_git_ssh_hosts:
+#   - alias: abc-gitlab
+#     hostname: gitlab.com
+#     port: 22
+#     identity: id_abc_ed25519
+# vault_paseo_password: "replace-with-custom-password" # optional, generated automatically if omitted

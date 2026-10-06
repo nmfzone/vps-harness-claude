@@ -1,0 +1,10 @@
+{% for host in agent_git_ssh_hosts %}
+Host {{ host.alias }} {{ host.hostname }}
+    HostName {{ host.hostname }}
+    Port {{ host.port }}
+    User git
+    IdentityFile {{ agent_service_home }}/.ssh/{{ host.identity }}
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+
+{% endfor %}

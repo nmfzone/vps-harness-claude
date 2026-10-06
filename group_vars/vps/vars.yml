@@ -1,0 +1,104 @@
+---
+ssh_port: 22
+admin_user: "{{ vault_admin_user }}"
+admin_group: "{{ vault_admin_group }}"
+admin_home: "/home/{{ admin_user }}"
+
+admin_shell: /bin/bash
+enable_oh_my_zsh: true
+oh_my_zsh_repo_revision: 146461f7c6d95f4ba1220559d66eb113418b40a8
+
+# Service account hosts Claude Code, ruflo, Paseo and Hermes Agent.
+agent_user: agent
+agent_group: agent
+agent_service_home: /var/lib/agent
+agent_shell: /usr/sbin/nologin
+workspace_group: agent-workspace
+
+claude_config_home: "{{ agent_service_home }}/.claude"
+paseo_home: "{{ agent_service_home }}/.paseo"
+hermes_home: "{{ agent_service_home }}/.hermes"
+
+workspace_root: "{{ admin_home }}/Workspace"
+
+go_version: "1.27.1"
+go_archives:
+  x86_64:
+    filename: "go1.27.1.linux-amd64.tar.gz"
+    sha256: "63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
+  aarch64:
+    filename: "go1.27.1.linux-arm64.tar.gz"
+    sha256: "3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec"
+
+# Optional Git SSH hosts are supplied from the encrypted vault. Public keys
+# are generated on the VPS; grant them access on each Git server separately.
+agent_git_ssh_hosts: "{{ vault_agent_git_ssh_hosts | default([]) }}"
+
+# Claude Code is the agent Paseo launches; Paseo is the remote control plane;
+# ruflo adds multi-agent orchestration; Hermes adds persistent memory, skills,
+# a messaging gateway and scheduled automations.
+claude_code_package: "@anthropic-ai/claude-code"
+claude_code_version: "2.1.288"
+ruflo_package: "ruflo"
+ruflo_version: "3.51.1"
+paseo_package: "@getpaseo/cli"
+paseo_version: "0.10.3"
+paseo_port: 6767
+paseo_password: "{{ vault_paseo_password | default(lookup('ansible.builtin.password', playbook_dir ~ '/.paseo_password length=32 chars=ascii_letters,digits'), true) }}"
+codegraph_package: "@colbymchenry/codegraph"
+codegraph_version: "1.6.0"
+
+# Hermes Agent installs a nested checkout that carries its own launcher.
+hermes_install_dir: "{{ hermes_home }}/hermes-agent"
+hermes_bin: "{{ hermes_install_dir }}/.hermes/bin/hermes"
+hermes_repo_url: "https://github.com/NousResearch/hermes-agent.git"
+
+# Model settings applied with `hermes config set` (merges into the installer's
+# managed config.yaml, preserving its _config_version migration marker).
+hermes_model_config:
+  model.provider: custom
+  model.base_url: "{{ omniroute_api_base_url }}"
+  model.default: "{{ omniroute_model_daily }}"
+
+# Claude Code and Hermes authenticate to models through the OmniRoute gateway.
+omniroute_base_url: "{{ vault_omniroute_base_url }}"
+omniroute_api_base_url: "{{ omniroute_base_url }}/v1"
+omniroute_model_daily: vps-daily-coding
+omniroute_model_heavy: vps-heavy-coding
+omniroute_model_quick: vps-quick-model
+
+# Preinstall these marketplaces and plugins before the Paseo daemon starts.
+claude_code_marketplaces:
+  karpathy-skills:
+    source:
+      source: github
+      repo: forrestchang/andrej-karpathy-skills
+  addy-agent-skills:
+    source:
+      source: github
+      repo: addyosmani/agent-skills
+  claude-plugins-official:
+    source:
+      source: github
+      repo: anthropics/claude-plugins-official
+
+claude_code_plugins:
+  - andrej-karpathy-skills@karpathy-skills
+  - agent-skills@addy-agent-skills
+  - superpowers@claude-plugins-official
+
+tailscale_hostname: vps-harness-claude
+tailscale_accept_dns: true
+tailscale_advertise_exit_node: true
+tailscale_enroll: true
+
+# Agent configuration is rendered from these role templates plus vaulted
+# secrets, so no credential is ever written to a tracked file. Hermes config
+# (env + config.yaml) is owned by the hermes role.
+agent_config_templates:
+  - src: claude-settings.json.j2
+    dest: "{{ claude_config_home }}/settings.json"
+    mode: "0640"
+  - src: paseo-config.json.j2
+    dest: "{{ paseo_home }}/config.json"
+    mode: "0640"

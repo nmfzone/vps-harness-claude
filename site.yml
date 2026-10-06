@@ -1,0 +1,68 @@
+---
+- name: Provision private Claude Code / ruflo / Hermes / Paseo host
+  hosts: vps
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Validate Ubuntu 24.04 target
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] is version('24.04', '>=')
+        fail_msg: "This project supports Ubuntu 24.04+."
+
+    - name: Validate required deployment variables
+      ansible.builtin.assert:
+        that:
+          - vault_admin_user != ""
+          - vault_admin_group != ""
+          - vault_admin_authorized_key is match('^ssh-(ed25519|rsa) ')
+          - vault_admin_password_hash is match('^\$6\$')
+          - vault_admin_password_hash != '$6$REPLACE_WITH_SHA512_CRYPT_HASH'
+          - vault_tailscale_auth_key != ""
+          - vault_omniroute_token != ""
+          - vault_omniroute_token != "sk-replace-with-omniroute-token"
+          - vault_telegram_bot_token is defined
+          - vault_telegram_allowed_users is defined
+          - vault_telegram_bot_token is match('^[0-9]+:[A-Za-z0-9_-]{30,}$')
+          - vault_telegram_allowed_users is match('^[0-9]+(,[0-9]+)*$')
+        fail_msg: Required vaulted values are missing or still placeholders.
+      no_log: true
+  roles:
+    - base
+    - ssh
+    - agent_git_ssh
+    - tailscale
+    - firewall
+    - fail2ban
+    - runtime
+    - hermes
+    - agent_config
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Restart Paseo
+      ansible.builtin.systemd_service:
+        name: paseo.service
+        state: restarted
+      when: not ansible_check_mode
+
+    - name: Restart Hermes
+      ansible.builtin.systemd_service:
+        name: hermes.service
+        state: restarted
+      when: not ansible_check_mode
+  tasks:
+    - name: Enable and start Paseo after Claude plugins are ready
+      ansible.builtin.systemd_service:
+        name: paseo.service
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: not ansible_check_mode
+
+    - name: Apply pending service configuration before verification
+      ansible.builtin.meta: flush_handlers
+      when: not ansible_check_mode

@@ -1,0 +1,119 @@
+---
+- name: Validate Git SSH host entries
+  ansible.builtin.assert:
+    that:
+      - item.alias is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+      - item.hostname is match('^[A-Za-z0-9][A-Za-z0-9.-]*$')
+      - item.port | int >= 1
+      - item.port | int <= 65535
+      - item.identity is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+      - item.alias != item.hostname
+    fail_msg: Git SSH host entries need a safe alias, hostname, port, and identity filename.
+  loop: "{{ agent_git_ssh_hosts }}"
+  loop_control:
+    label: "{{ item.alias | default('invalid entry') }}"
+
+- name: Require unique Git SSH host aliases
+  ansible.builtin.assert:
+    that:
+      - agent_git_ssh_hosts | map(attribute='alias') | list | unique | length == agent_git_ssh_hosts | length
+      - agent_git_ssh_hosts | map(attribute='identity') | list | unique | length == agent_git_ssh_hosts | length
+
+- name: Create agent SSH directory
+  ansible.builtin.file:
+    path: "{{ agent_service_home }}/.ssh"
+    state: directory
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0700"
+  when: agent_git_ssh_hosts | length > 0
+
+- name: Generate Git SSH identity pairs only when absent
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/ssh-keygen
+      - -q
+      - -t
+      - ed25519
+      - -N
+      - ''
+      - -C
+      - "{{ agent_user }}@{{ item.alias }}"
+      - -f
+      - "{{ agent_service_home }}/.ssh/{{ item.identity }}"
+    creates: "{{ agent_service_home }}/.ssh/{{ item.identity }}"
+  become: true
+  become_user: "{{ agent_user }}"
+  loop: "{{ agent_git_ssh_hosts }}"
+  loop_control:
+    label: "{{ item.alias }}"
+  when: not ansible_check_mode
+
+- name: Restrict Git SSH identity permissions
+  ansible.builtin.file:
+    path: "{{ agent_service_home }}/.ssh/{{ item.0.identity }}{{ item.1 }}"
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "{{ '0644' if item.1 == '.pub' else '0600' }}"
+  loop: "{{ agent_git_ssh_hosts | product(['', '.pub']) | list }}"
+  loop_control:
+    label: "{{ item.0.alias }}{{ item.1 }}"
+  when: not ansible_check_mode
+
+- name: Collect Git SSH host keys
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/ssh-keyscan
+      - -T
+      - '10'
+      - -p
+      - "{{ item.port | string }}"
+      - -t
+      - ed25519
+      - "{{ item.hostname }}"
+  loop: "{{ agent_git_ssh_hosts }}"
+  loop_control:
+    label: "{{ item.alias }}"
+  register: agent_git_ssh_scan
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Require a host key for each Git SSH host
+  ansible.builtin.assert:
+    that:
+      - item.stdout_lines | select('match', '^(' ~ (item.item.hostname | regex_escape) ~ '|\\[' ~ (item.item.hostname | regex_escape) ~ '\\]:' ~ (item.item.port | string) ~ ') ssh-ed25519 ') | list | length > 0
+    fail_msg: "No ed25519 host key was returned for {{ item.item.hostname }}:{{ item.item.port }}."
+  loop: "{{ agent_git_ssh_scan.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.alias }}"
+  when: not ansible_check_mode
+
+- name: Install scanned Git SSH host keys
+  ansible.builtin.known_hosts:
+    name: "{{ '[' ~ item.item.hostname ~ ']:' ~ item.item.port if item.item.port | int != 22 else item.item.hostname }}"
+    key: "{{ item.stdout_lines | select('match', '^(' ~ (item.item.hostname | regex_escape) ~ '|\\[' ~ (item.item.hostname | regex_escape) ~ '\\]:' ~ (item.item.port | string) ~ ') ssh-ed25519 ') | first }}"
+    path: "{{ agent_service_home }}/.ssh/known_hosts"
+    state: present
+  loop: "{{ agent_git_ssh_scan.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.alias }}"
+  when: not ansible_check_mode
+
+- name: Restrict Git SSH known_hosts permissions
+  ansible.builtin.file:
+    path: "{{ agent_service_home }}/.ssh/known_hosts"
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0600"
+  when:
+    - agent_git_ssh_hosts | length > 0
+    - not ansible_check_mode
+
+- name: Configure agent Git SSH identities
+  ansible.builtin.template:
+    src: config.j2
+    dest: "{{ agent_service_home }}/.ssh/config"
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0600"
+  when: agent_git_ssh_hosts | length > 0

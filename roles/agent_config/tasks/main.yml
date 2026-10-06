@@ -1,0 +1,231 @@
+---
+- name: Create agent configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0750"
+  loop:
+    - "{{ claude_config_home }}"
+    - "{{ paseo_home }}"
+    - "{{ hermes_home }}"
+
+- name: Render agent configuration
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ agent_config_templates }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  no_log: true
+  notify:
+    - Restart Paseo
+
+- name: Check Claude Code user configuration
+  ansible.builtin.stat:
+    path: "{{ agent_service_home }}/.claude.json"
+  register: claude_user_config_file
+
+- name: Read Claude Code user configuration
+  ansible.builtin.slurp:
+    src: "{{ agent_service_home }}/.claude.json"
+  register: claude_user_config
+  no_log: true
+  when: claude_user_config_file.stat.exists
+
+- name: Complete Claude Code onboarding for the gateway account
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - |
+        import json
+        import os
+        import tempfile
+
+        path = os.path.join(os.environ["HOME"], ".claude.json")
+        try:
+            with open(path, encoding="utf-8") as source:
+                config = json.load(source)
+        except FileNotFoundError:
+            config = {}
+        config["hasCompletedOnboarding"] = True
+        fd, temp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".claude.json.")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as target:
+                json.dump(config, target, indent=2)
+                target.write("\n")
+            os.chmod(temp, 0o600)
+            os.replace(temp, path)
+        finally:
+            if os.path.exists(temp):
+                os.unlink(temp)
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+  when:
+    - not ansible_check_mode
+    - >-
+      not ((claude_user_config.content | b64decode | from_json).hasCompletedOnboarding | default(false)
+           if claude_user_config_file.stat.exists else false)
+
+
+- name: Register CodeGraph MCP for the agent user
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/claude"
+      - mcp
+      - add-json
+      - --scope
+      - user
+      - codegraph
+      - '{{ {"type": "stdio", "command": agent_service_home ~ "/.local/bin/codegraph", "args": ["serve", "--mcp"]} | to_json }}'
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  when:
+    - not ansible_check_mode
+    - >-
+      'codegraph' not in
+      ((claude_user_config.content | b64decode | from_json).mcpServers | default({})
+       if claude_user_config_file.stat.exists else {})
+  notify:
+    - Restart Paseo
+
+- name: Register grep.app HTTP MCP for the agent user
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/claude"
+      - mcp
+      - add
+      - --transport
+      - http
+      - --scope
+      - user
+      - grep
+      - https://mcp.grep.app
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  when:
+    - not ansible_check_mode
+    - >-
+      'grep' not in
+      ((claude_user_config.content | b64decode | from_json).mcpServers | default({})
+       if claude_user_config_file.stat.exists else {})
+  notify:
+    - Restart Paseo
+
+- name: Inspect Claude Code marketplaces
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/claude"
+      - plugin
+      - marketplace
+      - list
+      - --json
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+    CLAUDE_CODE_PLUGIN_PREFER_HTTPS: "1"
+  register: claude_marketplaces_before
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Register Claude Code marketplaces
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/claude"
+      - plugin
+      - marketplace
+      - add
+      - "{{ item.value.source.repo }}"
+      - --scope
+      - user
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+    CLAUDE_CODE_PLUGIN_PREFER_HTTPS: "1"
+  loop: "{{ claude_code_marketplaces | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when:
+    - not ansible_check_mode
+    - item.key not in (claude_marketplaces_before.stdout | from_json | map(attribute='name') | list)
+
+- name: Inspect installed Claude Code plugins
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/claude"
+      - plugin
+      - list
+      - --json
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  register: claude_plugins_before
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Install Claude Code plugins
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/claude"
+      - plugin
+      - install
+      - "{{ item }}"
+      - --scope
+      - user
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+    CLAUDE_CODE_PLUGIN_PREFER_HTTPS: "1"
+  loop: "{{ claude_code_plugins }}"
+  when:
+    - not ansible_check_mode
+    - item not in (claude_plugins_before.stdout | from_json | map(attribute='id') | list)
+
+- name: Verify Claude Code plugins are installed and enabled
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/claude"
+      - plugin
+      - list
+      - --json
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  register: claude_plugins_after
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Require all Claude Code plugins before starting Paseo
+  ansible.builtin.assert:
+    that:
+      - >-
+        claude_code_plugins | difference(
+          claude_plugins_after.stdout | from_json |
+          selectattr('enabled', 'equalto', true) | map(attribute='id') | list
+        ) | length == 0
+    fail_msg: "Required Claude Code plugins are missing or disabled; refusing to start Paseo."
+    quiet: true
+  when: not ansible_check_mode

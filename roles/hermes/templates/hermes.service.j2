@@ -1,0 +1,33 @@
+[Unit]
+Description=Hermes Agent gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ agent_user }}
+Group={{ agent_group }}
+WorkingDirectory={{ workspace_root }}
+Environment=HOME={{ agent_service_home }}
+Environment=HERMES_HOME={{ hermes_home }}
+Environment=XDG_DATA_HOME={{ agent_service_home }}/.local/share
+Environment=XDG_CONFIG_HOME={{ agent_service_home }}/.config
+Environment=XDG_CACHE_HOME={{ agent_service_home }}/.cache
+Environment=XDG_STATE_HOME={{ agent_service_home }}/.local/state
+Environment=PATH={{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart={{ hermes_bin }} gateway run --external-supervisor
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths={{ agent_service_home }} {{ workspace_root }}
+
+[Install]
+WantedBy=multi-user.target

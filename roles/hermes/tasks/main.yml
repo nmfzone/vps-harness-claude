@@ -1,0 +1,93 @@
+---
+- name: Check for an existing Hermes installation
+  ansible.builtin.stat:
+    path: "{{ hermes_bin }}"
+  register: hermes_install
+
+- name: Install Hermes Agent
+  ansible.builtin.shell:
+    cmd: >-
+      curl -fsSL https://hermes-agent.nousresearch.com/install.sh
+      | bash -s -- --non-interactive --hermes-home {{ hermes_home }}
+    executable: /bin/bash
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    HERMES_HOME: "{{ hermes_home }}"
+  when:
+    - not hermes_install.stat.exists
+    - not ansible_check_mode
+
+- name: Install Hermes messaging dependencies
+  ansible.builtin.command:
+    argv:
+      - "{{ hermes_bin }}"
+      - pm
+      - install
+      - --extra
+      - messaging
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    HERMES_HOME: "{{ hermes_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  register: hermes_messaging_install
+  changed_when: hermes_messaging_install.rc == 0
+  when: not ansible_check_mode
+  notify: Restart Hermes
+
+- name: Render Hermes provider credentials
+  ansible.builtin.template:
+    src: hermes-env.j2
+    dest: "{{ hermes_home }}/.env"
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0600"
+  no_log: true
+  notify: Restart Hermes
+
+# `hermes config set` merges into the installer-managed config.yaml, preserving
+# its _config_version migration marker (templating the whole file would break
+# `hermes update`).
+- name: Configure the Hermes model provider
+  ansible.builtin.command:
+    argv:
+      - "{{ hermes_bin }}"
+      - config
+      - set
+      - "{{ item.key }}"
+      - "{{ item.value }}"
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    HERMES_HOME: "{{ hermes_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  loop: "{{ hermes_model_config | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  changed_when: true
+  when:
+    - not ansible_check_mode
+  notify: Restart Hermes
+
+- name: Install Hermes Agent systemd service
+  ansible.builtin.template:
+    src: hermes.service.j2
+    dest: /etc/systemd/system/hermes.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Hermes
+
+- name: Enable and start Hermes gateway
+  ansible.builtin.systemd_service:
+    name: hermes.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode

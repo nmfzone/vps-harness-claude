@@ -1,0 +1,207 @@
+---
+- name: Require a supported Go architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['architecture'] in go_archives
+    fail_msg: "Go {{ go_version }} is available only for x86_64 and aarch64 in this playbook."
+
+- name: Select Go archive
+  ansible.builtin.set_fact:
+    go_archive: "{{ go_archives[ansible_facts['architecture']] }}"
+
+- name: Inspect installed Go version
+  ansible.builtin.command:
+    argv:
+      - /usr/local/go/bin/go
+      - version
+  register: installed_go_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Download verified Go archive
+  ansible.builtin.get_url:
+    url: "https://go.dev/dl/{{ go_archive.filename }}"
+    dest: "/var/tmp/{{ go_archive.filename }}"
+    checksum: "sha256:{{ go_archive.sha256 }}"
+    mode: "0644"
+  when:
+    - installed_go_version.stdout is not search('go version go' ~ (go_version | regex_escape) ~ ' linux/')
+    - not ansible_check_mode
+
+- name: Remove outdated Go installation
+  ansible.builtin.file:
+    path: /usr/local/go
+    state: absent
+  when:
+    - installed_go_version.stdout is not search('go version go' ~ (go_version | regex_escape) ~ ' linux/')
+    - not ansible_check_mode
+
+- name: Extract Go into /usr/local
+  ansible.builtin.unarchive:
+    src: "/var/tmp/{{ go_archive.filename }}"
+    dest: /usr/local
+    remote_src: true
+  when:
+    - installed_go_version.stdout is not search('go version go' ~ (go_version | regex_escape) ~ ' linux/')
+    - not ansible_check_mode
+
+- name: Link Go tools into shared system PATH
+  ansible.builtin.file:
+    src: "/usr/local/go/bin/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  loop:
+    - go
+    - gofmt
+  when: not ansible_check_mode
+
+- name: Verify Go version for admin and agent accounts
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/go
+      - version
+  become: true
+  become_user: "{{ item }}"
+  loop:
+    - "{{ admin_user }}"
+    - "{{ agent_user }}"
+  register: go_version_check
+  changed_when: false
+  failed_when: go_version_check.stdout is not search('go version go' ~ (go_version | regex_escape) ~ ' linux/')
+  when: not ansible_check_mode
+
+- name: Install Node.js 22 repository
+  ansible.builtin.shell:
+    cmd: "curl -fsSL https://deb.nodesource.com/setup_22.x | bash"
+    executable: /bin/bash
+    creates: /etc/apt/sources.list.d/nodesource.list
+
+- name: Install Node.js 22
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true
+
+- name: Create npm global package directory
+  ansible.builtin.file:
+    path: "{{ agent_service_home }}/.local/lib/node_modules"
+    state: directory
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0755"
+
+- name: Check runtime npm packages
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/npm
+      - ls
+      - --global
+      - --depth=0
+      - --json
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    NPM_CONFIG_PREFIX: "{{ agent_service_home }}/.local"
+  register: runtime_npm_packages
+  changed_when: false
+  failed_when: runtime_npm_packages.rc not in [0, 1]
+
+- name: Install Claude Code, ruflo, Paseo, and CodeGraph
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/npm
+      - install
+      - --global
+      - "{{ item.package }}@{{ item.version }}"
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    NPM_CONFIG_PREFIX: "{{ agent_service_home }}/.local"
+  loop:
+    - package: "{{ claude_code_package }}"
+      version: "{{ claude_code_version }}"
+    - package: "{{ ruflo_package }}"
+      version: "{{ ruflo_version }}"
+    - package: "{{ paseo_package }}"
+      version: "{{ paseo_version }}"
+    - package: "{{ codegraph_package }}"
+      version: "{{ codegraph_version }}"
+  loop_control:
+    label: "{{ item.package }}@{{ item.version }}"
+  when: >-
+    (runtime_npm_packages.stdout | from_json).get('dependencies', {}).get(item.package, {}).get('version') != item.version
+
+- name: Initialize CodeGraph in the shared Workspace
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/codegraph"
+      - init
+      - --yes
+      - "{{ workspace_root }}"
+    creates: "{{ workspace_root }}/.codegraph"
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  when: not ansible_check_mode
+
+- name: Create agent state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0750"
+  loop:
+    - "{{ claude_config_home }}"
+    - "{{ claude_config_home }}/agents"
+    - "{{ claude_config_home }}/commands"
+    - "{{ claude_config_home }}/skills"
+    - "{{ paseo_home }}"
+    - "{{ hermes_home }}"
+    - "{{ agent_service_home }}/.config"
+    - "{{ agent_service_home }}/.local/share"
+    - "{{ agent_service_home }}/.cache"
+    - "{{ agent_service_home }}/.local/state"
+
+# ruflo init is a wizard. Run it once, non-interactively where supported; if
+# the CLI has no non-interactive mode the task fails and the README documents
+# running `ruflo init` by hand as the fallback.
+- name: Check for an existing ruflo initialization
+  ansible.builtin.stat:
+    path: "{{ agent_service_home }}/.claude-flow"
+  register: runtime_ruflo_init
+
+- name: Initialize ruflo for the agent workspace
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/ruflo"
+      - init
+      - --yes
+    chdir: "{{ workspace_root }}"
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:{{ ansible_facts['env']['PATH'] }}"
+  register: runtime_ruflo_init_run
+  changed_when: runtime_ruflo_init_run.rc == 0
+  when:
+    - not runtime_ruflo_init.stat.exists
+    - not ansible_check_mode
+
+- name: Install Paseo systemd service
+  ansible.builtin.template:
+    src: paseo.service.j2
+    dest: /etc/systemd/system/paseo.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Paseo
+

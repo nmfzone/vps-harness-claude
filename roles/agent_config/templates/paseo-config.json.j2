@@ -1,0 +1,41 @@
+{
+  "daemon": {
+    "listen": "0.0.0.0:{{ paseo_port }}",
+    "hostnames": ["localhost", ".localhost", "{{ tailscale_hostname }}"]
+  },
+  "agents": {
+    "providers": {
+      "claude": {
+        "models": [
+          {
+            "id": "vps-daily-coding",
+            "label": "Daily Coding Combo",
+            "description": "default",
+            "isDefault": true
+          },
+          {
+            "id": "vps-heavy-coding",
+            "label": "Heavy Coding Combo"
+          },
+          {
+            "id": "vps-quick-model",
+            "label": "Quick Model Combo"
+          },
+          {
+            "id": "vps-artistry-model",
+            "label": "Artistry Model Combo"
+          },
+          {
+            "id": "vps-visual-model",
+            "label": "Visual Model Combo"
+          }
+        ]
+      }
+    }
+  },
+  "features": {
+    "webUi": {
+      "enabled": true
+    }
+  }
+}

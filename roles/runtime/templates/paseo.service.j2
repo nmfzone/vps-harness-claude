@@ -1,0 +1,37 @@
+[Unit]
+Description=Paseo agent daemon
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+User={{ agent_user }}
+Group={{ agent_group }}
+WorkingDirectory={{ workspace_root }}
+Environment=HOME={{ agent_service_home }}
+Environment=PASEO_HOME={{ paseo_home }}
+Environment=PASEO_PASSWORD={{ paseo_password }}
+Environment=PASEO_WEB_UI_ENABLED=true
+Environment=XDG_DATA_HOME={{ agent_service_home }}/.local/share
+Environment=XDG_CONFIG_HOME={{ agent_service_home }}/.config
+Environment=XDG_CACHE_HOME={{ agent_service_home }}/.cache
+Environment=XDG_STATE_HOME={{ agent_service_home }}/.local/state
+Environment=PATH={{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart={{ agent_service_home }}/.local/bin/paseo daemon run
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=read-only
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictSUIDSGID=true
+ReadWritePaths={{ agent_service_home }} {{ workspace_root }}
+
+[Install]
+WantedBy=multi-user.target

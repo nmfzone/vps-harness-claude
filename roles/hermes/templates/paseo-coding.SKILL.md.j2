@@ -1,0 +1,79 @@
+---
+name: paseo-coding
+description: Route coding work to Claude Code through the Paseo control plane instead of editing code directly.
+version: 1.0.0
+license: MIT
+platforms: [linux]
+metadata:
+  hermes:
+    tags: [coding, paseo, delegation]
+    requires_tools: [terminal]
+    related_skills: []
+---
+
+# Route coding work through Paseo
+
+All code changes on this host MUST be executed by **Claude Code**, launched through the
+**Paseo** control plane. Hermes must not edit source files directly; it instructs
+Paseo and reports what happens. Hermes keeps its other tools for non-coding work
+(research, summaries, notes, scheduling).
+
+## When to Use
+
+Use this skill for any request that changes code in a repository: implement, fix,
+refactor, add tests, upgrade dependencies, review a diff, or run a repository build
+or test suite.
+
+No need to use it for non-coding tasks (answering questions, summarizing, web
+research, drafting messages), unless user said so.
+
+## Procedure
+
+1. Turn the request into a concrete, self-contained task. Include the repository
+   directory (relative to the Workspace), what to change, and how to verify.
+
+2. Start a Claude Code agent through Paseo, pinned to the shared Workspace as the
+   working directory:
+
+   ```bash
+   paseo run --provider claude --cwd {{ workspace_root }} --background --format json "<task>"
+   ```
+
+   The `--cwd {{ workspace_root }}` is fixed. Do not run coding tasks in any other
+   directory, and do not use `cd` into a repository yourself.
+
+3. Record the agent id from the JSON result.
+
+4. Wait for completion and read the result:
+
+   ```bash
+   paseo wait <id>
+   paseo logs <id> --tail 100
+   ```
+
+5. Report back on the channel that made the request: the agent id, a short summary
+   of what changed, and any failures. Do not claim the work succeeded unless
+   `paseo logs` shows it did.
+
+## Quick Reference
+
+| Goal | Command |
+|------|---------|
+| Start a coding task | `paseo run --provider claude --cwd {{ workspace_root }} --background --format json "<task>"` |
+| List agents | `paseo ls` |
+| Stream output | `paseo attach <id>` |
+| Wait for finish | `paseo wait <id>` |
+| Read the timeline | `paseo logs <id>` |
+| Send a follow-up | `paseo send <id> "<task>"` |
+| Stop an agent | `paseo stop <id>` |
+
+## Pitfalls
+
+- NEVER edit files to implement a coding request; that bypasses the control plane,
+  so the work cannot be inspected, attached to, or stopped from Paseo.
+- ALWAYS pass `--cwd {{ workspace_root }}`; an agent launched elsewhere works in the
+  wrong tree, unless user explicitly instruct another cwd.
+- Long tasks exceed a single reply — start them in the background and report status,
+  then follow up with `paseo wait` / `paseo logs` rather than blocking.
+- If `paseo run` reports the daemon is unreachable or requires a password, report the
+  failure instead of falling back to editing code directly.

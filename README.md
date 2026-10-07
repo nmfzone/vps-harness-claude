@@ -169,6 +169,34 @@ token into `config.yaml`):
 hermes config set model.api_key "$OPENAI_API_KEY"
 ```
 
+## Routing coding work through Paseo (Hermes skill)
+
+The `hermes` role installs a `paseo-coding` skill at
+`~/.hermes/skills/paseo-coding/SKILL.md`, adds it to
+`skills.auto_load` in Hermes' `config.yaml`, and adds `PASEO_PASSWORD` to Hermes'
+`.env`. New CLI, Telegram, cron, and API sessions load the skill in the initial
+prompt. The skill instructs Hermes to route every coding request through Paseo:
+
+```bash
+paseo run --provider claude --cwd <workspace_root> --background --format json "<task>"
+```
+
+so the coding agent is launched, owned, and inspectable by Paseo, then reports the
+result back on Telegram. Hermes keeps its own tools for non-coding work.
+
+This is **advisory**: a skill guides the model, it does not remove Hermes' file or
+terminal tools. To force the behavior you would instead restrict Hermes' Telegram
+toolsets (`platform_toolsets.telegram`), which this harness does not do.
+
+Verify after deploy:
+
+```bash
+sudo -u agent env HOME=/var/lib/agent HERMES_HOME=/var/lib/agent/.hermes \
+  /var/lib/agent/.hermes/hermes-agent/.hermes/bin/hermes skills list
+sudo -u agent env HOME=/var/lib/agent \
+  paseo run --provider claude --cwd /home/<admin>/Workspace "echo hello"
+```
+
 ## ruflo initialization
 
 `ruflo init` is a wizard. The playbook runs it once, non-interactively, guarded by

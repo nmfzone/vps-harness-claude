@@ -48,6 +48,49 @@
   no_log: true
   notify: Restart Hermes
 
+- name: Create Hermes skills directory
+  ansible.builtin.file:
+    path: "{{ hermes_home }}/skills/paseo-coding"
+    state: directory
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0750"
+
+- name: Install the paseo-coding skill
+  ansible.builtin.template:
+    src: paseo-coding.SKILL.md.j2
+    dest: "{{ hermes_home }}/skills/paseo-coding/SKILL.md"
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0640"
+  notify: Restart Hermes
+
+- name: Read Hermes skill auto-load configuration
+  ansible.builtin.slurp:
+    src: "{{ hermes_home }}/config.yaml"
+  register: hermes_config_file
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Add paseo-coding to Hermes auto-loaded skills
+  ansible.builtin.command:
+    argv:
+      - "{{ hermes_bin }}"
+      - config
+      - set
+      - skills.auto_load
+      - "{{ ((hermes_config_file.content | b64decode | from_yaml).get('skills', {}).get('auto_load', []) + ['paseo-coding']) | to_json }}"
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    HERMES_HOME: "{{ hermes_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  when:
+    - not ansible_check_mode
+    - "'paseo-coding' not in (hermes_config_file.content | b64decode | from_yaml).get('skills', {}).get('auto_load', [])"
+  notify: Restart Hermes
+
 # `hermes config set` merges into the installer-managed config.yaml, preserving
 # its _config_version migration marker (templating the whole file would break
 # `hermes update`).

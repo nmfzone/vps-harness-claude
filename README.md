@@ -175,14 +175,22 @@ The `hermes` role installs a `paseo-coding` skill at
 `~/.hermes/skills/paseo-coding/SKILL.md`, adds it to
 `skills.auto_load` in Hermes' `config.yaml`, and adds `PASEO_PASSWORD` to Hermes'
 `.env`. New CLI, Telegram, cron, and API sessions load the skill in the initial
-prompt. The skill instructs Hermes to route every coding request through Paseo:
+prompt. The skill instructs Hermes to find one local Paseo workspace named
+**Coding Workspace** for `<workspace_root>`, or create it if missing.
+It serializes the find-or-create operation with `flock` to prevent simultaneous
+requests from creating duplicates, then uses the complete workspace ID and a
+task-specific agent title on every coding request:
 
 ```bash
-paseo run --provider claude --cwd <workspace_root> --background --format json "<task>"
+paseo run --provider claude --workspace "<workspaceId>" --cwd <workspace_root> \
+  --title "<short task title>" --background --format json "<task>"
 ```
 
-so the coding agent is launched, owned, and inspectable by Paseo, then reports the
-result back on Telegram. Hermes keeps its own tools for non-coding work.
+This reuses one workspace rather than creating another one per run. Existing
+duplicate workspaces are left untouched. If more than one workspace matches,
+Hermes stops and reports the ambiguity instead of guessing. The coding agent
+remains inspectable by Paseo, then Hermes reports the result on Telegram.
+Hermes keeps its own tools for non-coding work.
 
 This is **advisory**: a skill guides the model, it does not remove Hermes' file or
 terminal tools. To force the behavior you would instead restrict Hermes' Telegram
@@ -194,7 +202,10 @@ Verify after deploy:
 sudo -u agent env HOME=/var/lib/agent HERMES_HOME=/var/lib/agent/.hermes \
   /var/lib/agent/.hermes/hermes-agent/.hermes/bin/hermes skills list
 sudo -u agent env HOME=/var/lib/agent \
-  paseo run --provider claude --cwd /home/<admin>/Workspace "echo hello"
+  paseo workspace ls --json    # find "Coding Workspace" and copy its workspaceId
+sudo -u agent env HOME=/var/lib/agent \
+  paseo run --provider claude --workspace "<workspaceId>" \
+  --cwd /home/<admin>/Workspace --title "Verify shared workspace" "echo hello"
 ```
 
 ## ruflo initialization

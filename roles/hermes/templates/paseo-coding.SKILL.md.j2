@@ -32,15 +32,38 @@ research, drafting messages), unless user said so.
 1. Turn the request into a concrete, self-contained task. Include the repository
    directory (relative to the Workspace), what to change, and how to verify.
 
-2. Start a Claude Code agent through Paseo, pinned to the shared Workspace as the
-   working directory:
+2. Give the task a short, descriptive agent title. Resolve the shared local
+   workspace named **Coding Workspace** in ONE shell invocation. The lock covers
+   both listing and creation, so two simultaneous requests cannot each create
+   one. Run the following without splitting it across terminal calls:
 
    ```bash
-   paseo run --provider claude --cwd {{ workspace_root }} --background --format json "<task>"
+   workspace_id=$(flock -x {{ paseo_home }}/coding-workspace.lock /usr/bin/python3 -c '
+   import json, subprocess, sys
+   directory = sys.argv[1]
+   def paseo(*args):
+       return json.loads(subprocess.check_output(["paseo", "workspace", *args, "--json"], text=True))
+   rows = paseo("ls")
+   matches = [row for row in rows if row.get("name") == "Coding Workspace"
+              and row.get("isolation") == "local" and row.get("cwd") == directory]
+   if len(matches) > 1:
+       raise SystemExit("Multiple Coding Workspace entries match; choose one manually")
+   row = matches[0] if matches else paseo("create", "--isolation", "local", "--path", directory, "--title", "Coding Workspace")
+   if row.get("name") != "Coding Workspace" or row.get("isolation") != "local" or row.get("cwd") != directory:
+       raise SystemExit("Paseo returned an unexpected workspace")
+   workspace_id = row.get("workspaceId")
+   if not isinstance(workspace_id, str) or not workspace_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in workspace_id):
+       raise SystemExit("Paseo returned an invalid workspace ID")
+   print(workspace_id)
+   ' {{ workspace_root }}) || exit 1
+   paseo run --provider claude --workspace "$workspace_id" --cwd {{ workspace_root }} --title "<short task title>" --background --format json "<task>"
    ```
 
-   The `--cwd {{ workspace_root }}` is fixed. Do not run coding tasks in any other
-   directory, and do not use `cd` into a repository yourself.
+   Do not rename, archive, or delete existing workspaces; they may contain
+   agents. If listing, creation, or validation fails, report the failure.
+   Never fall back to running without `--workspace`: that creates another
+   duplicate. The `--cwd {{ workspace_root }}` is fixed; do not run coding
+   tasks in another directory or `cd` into a repository.
 
 3. Record the agent id from the JSON result.
 
@@ -59,7 +82,8 @@ research, drafting messages), unless user said so.
 
 | Goal | Command |
 |------|---------|
-| Start a coding task | `paseo run --provider claude --cwd {{ workspace_root }} --background --format json "<task>"` |
+| Find or create workspace | Use the locked one-invocation command in step 2; do not list and create in separate terminal calls |
+| Start a coding task | Use the selected `$workspace_id` with `paseo run --provider claude --workspace "$workspace_id" --cwd {{ workspace_root }} --title "<short task title>" --background --format json "<task>"` |
 | List agents | `paseo ls` |
 | Stream output | `paseo attach <id>` |
 | Wait for finish | `paseo wait <id>` |
@@ -71,8 +95,8 @@ research, drafting messages), unless user said so.
 
 - NEVER edit files to implement a coding request; that bypasses the control plane,
   so the work cannot be inspected, attached to, or stopped from Paseo.
-- ALWAYS pass `--cwd {{ workspace_root }}`; an agent launched elsewhere works in the
-  wrong tree, unless user explicitly instruct another cwd.
+- ALWAYS pass the selected complete `--workspace "<workspaceId>"` and
+  `--cwd {{ workspace_root }}`; omitting the ID creates another workspace.
 - Long tasks exceed a single reply — start them in the background and report status,
   then follow up with `paseo wait` / `paseo logs` rather than blocking.
 - If `paseo run` reports the daemon is unreachable or requires a password, report the

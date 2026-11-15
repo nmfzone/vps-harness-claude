@@ -10,6 +10,58 @@
     - "{{ claude_config_home }}"
     - "{{ paseo_home }}"
     - "{{ hermes_home }}"
+    - "{{ agent_service_home }}/.config"
+    - "{{ opencode_config_home }}"
+    - "{{ agent_service_home }}/.omp"
+    - "{{ omp_config_home }}"
+    - "{{ omo_config_home }}"
+
+- name: Create OmniRoute credential directory
+  ansible.builtin.file:
+    path: /etc/paseo
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Validate OmniRoute credential format for systemd environment file
+  ansible.builtin.assert:
+    that:
+      - vault_omniroute_token | length > 0
+      - vault_omniroute_token is match('^[A-Za-z0-9._~+/-]+=*$')
+  no_log: true
+
+- name: Install OmniRoute credential environment file
+  ansible.builtin.copy:
+    dest: "{{ omniroute_environment_file }}"
+    content: "OMNIROUTE_API_KEY={{ vault_omniroute_token }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify:
+    - Restart Paseo
+
+- name: Create Paseo systemd override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/paseo.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Load OmniRoute credential into Paseo service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/paseo.service.d/omniroute.conf
+    content: |
+      [Service]
+      EnvironmentFile={{ omniroute_environment_file }}
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Paseo
 
 - name: Render agent configuration
   ansible.builtin.template:

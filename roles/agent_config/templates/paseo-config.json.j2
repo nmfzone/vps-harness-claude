@@ -7,28 +7,41 @@
     "providers": {
       "claude": {
         "models": [
+{% for model in omniroute_models %}
           {
-            "id": "vps-daily-coding",
-            "label": "Daily Coding Combo",
-            "description": "default",
+            "id": {{ ('omniroute/' ~ model.id) | to_json }},
+            "label": {{ model.name | to_json }}{{ ',' if model.id == omniroute_model_daily else '' }}
+{% if model.is_default %}
             "isDefault": true
-          },
+{% endif %}
+          }{{ ',' if not loop.last else '' }}
+{% endfor %}
+        ]
+      },
+      "opencode": {
+        "models": [
+{% for model in omniroute_models %}
           {
-            "id": "vps-heavy-coding",
-            "label": "Heavy Coding Combo"
-          },
+            "id": {{ ('omniroute/' ~ model.id) | to_json }},
+            "label": {{ model.name | to_json }}{{ ',' if model.id == omniroute_model_daily else '' }}
+{% if model.is_default %}
+            "isDefault": true
+{% endif %}
+          }{{ ',' if not loop.last else '' }}
+{% endfor %}
+        ]
+      },
+      "omp": {
+        "models": [
+{% for model in omniroute_models %}
           {
-            "id": "vps-quick-model",
-            "label": "Quick Model Combo"
-          },
-          {
-            "id": "vps-artistry-model",
-            "label": "Artistry Model Combo"
-          },
-          {
-            "id": "vps-visual-model",
-            "label": "Visual Model Combo"
-          }
+            "id": {{ ('omniroute/' ~ model.id) | to_json }},
+            "label": {{ model.name | to_json }}{{ ',' if model.id == omniroute_model_daily else '' }}
+{% if model.is_default %}
+            "isDefault": true
+{% endif %}
+          }{{ ',' if not loop.last else '' }}
+{% endfor %}
         ]
       }
     }

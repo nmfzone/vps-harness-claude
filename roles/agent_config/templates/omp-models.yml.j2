@@ -1,0 +1,13 @@
+providers:
+  omniroute:
+    baseUrl: {{ omniroute_api_base_url | to_json }}
+    api: openai-completions
+    apiKey: {{ vault_omniroute_token | to_json }}
+    models:
+{% for model in omniroute_models %}
+      - id: {{ model.id | to_json }}
+        name: {{ model.name | to_json }}
+        contextWindow: {{ model.context_window | to_json }}
+        maxTokens: {{ model.max_tokens | to_json }}
+        input: {{ model.input | to_json }}
+{% endfor %}

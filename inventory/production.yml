@@ -2,7 +2,7 @@ all:
   children:
     vps:
       hosts:
-        vps-harness-claude:
+        vps-harness:
           ansible_host: "{{ vault_ansible_host }}"
           ansible_user: "{{ vault_admin_user }}"
           ansible_port: 22

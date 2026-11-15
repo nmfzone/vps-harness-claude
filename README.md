@@ -28,6 +28,26 @@ Telegram / Discord -- outbound --> hermes.service (gateway + cron + persistent m
   agent. It is *not* driven by Paseo.
 - Model access for Claude Code and Hermes goes through the **OmniRoute gateway**.
 
+## Additional OpenCode and OMP clients
+
+Ansible also installs OpenCode `1.18.35` with the OMO plugin `4.19.4`, and OMP
+`18.1.13`. These package versions are pinned. Bun is installed for OMP. The
+agent user's global OpenCode configuration is under `~/.config/opencode`, OMO's
+plugin configuration is under `~/.omo/omo.jsonc`, and OMP's configuration is
+under `~/.omp/agent`. The OMO config maps its agents and categories to the same
+OmniRoute `vps-*` models used elsewhere in this harness.
+
+Paseo exposes OpenCode and OMP as client choices using OmniRoute configuration;
+its configuration is `$PASEO_HOME/config.json`. The existing Claude setup remains
+intact, including its configured default. Adding these choices does not change
+Paseo's default provider. First-provider selection remains client-side, so select
+OpenCode in each client where you want to use it. The OpenCode CLI default model
+is `omniroute/vps-daily-coding`.
+
+OMP and Paseo use the same Vault-backed OmniRoute credential through inherited
+service environment variables, not credential literals in configuration files.
+This deployment may not have been tested against an actual VPS.
+
 The playbook explicitly registers three public marketplaces and installs
 `andrej-karpathy-skills@karpathy-skills`, `agent-skills@addy-agent-skills`, and
 `superpowers@claude-plugins-official` as the `agent` account. It verifies all
@@ -251,7 +271,7 @@ The `agent` account has a non-login shell, so run the installed binary via
 ## Connect Paseo
 
 Open the Paseo web UI at the VPS Tailscale address and port `6767`, for example
-`http://vps-harness-claude:6767`, then enter `PASEO_PASSWORD`. In Paseo Desktop,
+`http://vps-harness:6767`, then enter `PASEO_PASSWORD`. In Paseo Desktop,
 add the daemon as a host (direct/Tailscale, or SSH). The daemon is already running
 in the background.
 
@@ -270,7 +290,7 @@ it; keep SSH and the tailnet-only Paseo rule intact.
 sudo systemctl status paseo.service hermes.service
 sudo journalctl -u paseo.service -f
 sudo journalctl -u hermes.service -f
-curl -I http://vps-harness-claude:6767/   # from a tailnet workstation
+curl -I http://vps-harness:6767/   # from a tailnet workstation
 ```
 
 Do not add a public inbound firewall rule for the agent services. Paseo is reachable

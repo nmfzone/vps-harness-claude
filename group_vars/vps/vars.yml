@@ -16,6 +16,9 @@ agent_shell: /usr/sbin/nologin
 workspace_group: agent-workspace
 
 claude_config_home: "{{ agent_service_home }}/.claude"
+opencode_config_home: "{{ agent_service_home }}/.config/opencode"
+omp_config_home: "{{ agent_service_home }}/.omp/agent"
+omo_config_home: "{{ agent_service_home }}/.omo"
 paseo_home: "{{ agent_service_home }}/.paseo"
 hermes_home: "{{ agent_service_home }}/.hermes"
 
@@ -47,6 +50,13 @@ paseo_port: 6767
 paseo_password: "{{ vault_paseo_password | default(lookup('ansible.builtin.password', playbook_dir ~ '/.paseo_password length=32 chars=ascii_letters,digits'), true) }}"
 codegraph_package: "@colbymchenry/codegraph"
 codegraph_version: "1.6.0"
+opencode_package: "opencode-ai"
+opencode_version: "1.18.35"
+omo_plugin_version: "4.19.4"
+bun_package: "bun"
+bun_version: "1.4.4"
+omp_package: "@oh-my-pi/pi-coding-agent"
+omp_version: "18.14.0"
 
 # Hermes Agent installs a nested checkout that carries its own launcher.
 hermes_install_dir: "{{ hermes_home }}/hermes-agent"
@@ -66,6 +76,71 @@ omniroute_api_base_url: "{{ omniroute_base_url }}/v1"
 omniroute_model_daily: vps-daily-coding
 omniroute_model_heavy: vps-heavy-coding
 omniroute_model_quick: vps-quick-model
+omniroute_model_writing: vps-writing-model
+omniroute_model_artistry: vps-artistry-model
+omniroute_model_visual: vps-visual-model
+omniroute_environment_file: /etc/paseo/omniroute.env
+omniroute_models:
+  - id: "{{ omniroute_model_daily }}"
+    name: "Daily Coding Combo"
+    context_window: 1000000
+    max_tokens: 65536
+    input: [text, image]
+    output: [text]
+    attachment: true
+    tool_call: true
+    temperature: true
+    is_default: true
+  - id: "{{ omniroute_model_heavy }}"
+    name: "Heavy Coding Combo"
+    context_window: 1000000
+    max_tokens: 65536
+    input: [text, image]
+    output: [text]
+    attachment: true
+    tool_call: true
+    temperature: true
+    is_default: false
+  - id: "{{ omniroute_model_quick }}"
+    name: "Quick Model Combo"
+    context_window: 1000000
+    max_tokens: 65536
+    input: [text, image]
+    output: [text]
+    attachment: true
+    tool_call: true
+    temperature: true
+    is_default: false
+  - id: "{{ omniroute_model_writing }}"
+    name: "Writing Model Combo"
+    context_window: 1000000
+    max_tokens: 65536
+    input: [text, image]
+    output: [text]
+    attachment: true
+    tool_call: true
+    temperature: true
+    is_default: false
+  - id: "{{ omniroute_model_artistry }}"
+    name: "Artistry Model Combo"
+    context_window: 1000000
+    max_tokens: 65536
+    input: [text, image]
+    output: [text]
+    attachment: true
+    tool_call: true
+    temperature: true
+    is_default: false
+  - id: "{{ omniroute_model_visual }}"
+    name: "Visual Model Combo"
+    context_window: 1000000
+    max_tokens: 65536
+    input: [text, image]
+    output: [text, image]
+    attachment: true
+    tool_call: true
+    temperature: true
+    is_default: false
 
 # Preinstall these marketplaces and plugins before the Paseo daemon starts.
 claude_code_marketplaces:
@@ -87,7 +162,7 @@ claude_code_plugins:
   - agent-skills@addy-agent-skills
   - superpowers@claude-plugins-official
 
-tailscale_hostname: vps-harness-claude
+tailscale_hostname: vps-harness
 tailscale_accept_dns: true
 tailscale_advertise_exit_node: true
 tailscale_enroll: true
@@ -96,9 +171,24 @@ tailscale_enroll: true
 # secrets, so no credential is ever written to a tracked file. Hermes config
 # (env + config.yaml) is owned by the hermes role.
 agent_config_templates:
-  - src: claude-settings.json.j2
-    dest: "{{ claude_config_home }}/settings.json"
-    mode: "0640"
+#  - src: claude-settings.json.j2
+#    dest: "{{ claude_config_home }}/settings.json"
+#    mode: "0640"
   - src: paseo-config.json.j2
     dest: "{{ paseo_home }}/config.json"
+    mode: "0640"
+  - src: opencode.json.j2
+    dest: "{{ opencode_config_home }}/opencode.json"
+    mode: "0640"
+  - src: omo-config.jsonc.j2
+    dest: "{{ omo_config_home }}/omo.jsonc"
+    mode: "0640"
+  - src: omp-models.yml.j2
+    dest: "{{ omp_config_home }}/models.yml"
+    mode: "0640"
+  - src: omp-config.yml.j2
+    dest: "{{ omp_config_home }}/config.yml"
+    mode: "0640"
+  - src: omp-mcp.json.j2
+    dest: "{{ omp_config_home }}/mcp.json"
     mode: "0640"

@@ -108,7 +108,7 @@
   changed_when: false
   failed_when: runtime_npm_packages.rc not in [0, 1]
 
-- name: Install Claude Code, ruflo, Paseo, and CodeGraph
+- name: Install Claude Code, ruflo, Paseo, CodeGraph, OpenCode, and Bun
   ansible.builtin.command:
     argv:
       - /usr/bin/npm
@@ -129,10 +129,86 @@
       version: "{{ paseo_version }}"
     - package: "{{ codegraph_package }}"
       version: "{{ codegraph_version }}"
+    - package: "{{ opencode_package }}"
+      version: "{{ opencode_version }}"
+    - package: "{{ bun_package }}"
+      version: "{{ bun_version }}"
   loop_control:
     label: "{{ item.package }}@{{ item.version }}"
   when: >-
     (runtime_npm_packages.stdout | from_json).get('dependencies', {}).get(item.package, {}).get('version') != item.version
+
+- name: Check OpenCode and Bun versions
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/{{ item.binary }}"
+      - --version
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  loop:
+    - { binary: opencode, version: "{{ opencode_version }}" }
+    - { binary: bun, version: "{{ bun_version }}" }
+  loop_control:
+    label: "{{ item.binary }}@{{ item.version }}"
+  register: runtime_binary_versions
+  changed_when: false
+  failed_when: runtime_binary_versions.rc != 0 or runtime_binary_versions.stdout | trim != item.version
+  when: not ansible_check_mode
+
+- name: Check installed OMP version
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/omp"
+      - --version
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    BUN_INSTALL: "{{ agent_service_home }}/.local"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  register: installed_omp_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install pinned OMP with Bun
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/bun"
+      - install
+      - -g
+      - --no-cache
+      - "{{ omp_package }}@{{ omp_version }}"
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    BUN_INSTALL: "{{ agent_service_home }}/.local"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  when: >-
+    installed_omp_version.rc != 0 or
+    installed_omp_version.stdout is not search('^omp/' ~ (omp_version | regex_escape) ~ '$')
+
+- name: Verify installed OMP version
+  ansible.builtin.command:
+    argv:
+      - "{{ agent_service_home }}/.local/bin/omp"
+      - --version
+  become: true
+  become_user: "{{ agent_user }}"
+  environment:
+    HOME: "{{ agent_service_home }}"
+    BUN_INSTALL: "{{ agent_service_home }}/.local"
+    PATH: "{{ agent_service_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  register: verified_omp_version
+  failed_when: >-
+    verified_omp_version.rc != 0 or
+    verified_omp_version.stdout is not search('^omp/' ~ (omp_version | regex_escape) ~ '$')
+  changed_when: false
+  when: not ansible_check_mode
 
 - name: Initialize CodeGraph in the shared Workspace
   ansible.builtin.command:

@@ -1,0 +1,175 @@
+// OMO configuration
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json",
+  "[opencode]": {
+    "agents": {
+      "hephaestus": {
+        "model": "omniroute/{{ omniroute_model_heavy }}",
+        "mode": "subagent",
+        "description": "Deep Worker — GPT-native autonomous executor",
+        "reasoning": "high",
+        "allow_non_gpt_model": true,
+        "prompt_append": "Map terrain before coding. Explore implementation paths carefully. Verify correctness deeply and improve robustness.",
+        "tools": {
+          "read_file": true,
+          "write_file": true,
+          "edit_file": true
+        },
+        "permission": {
+          "edit": "allow",
+          "webfetch": "ask",
+          "git": "allow",
+          "task": "allow",
+          "doom_loop": "deny"
+        }
+      },
+      "oracle": {
+        "model": "omniroute/{{ omniroute_model_heavy }}",
+        "mode": "subagent",
+        "description": "Architecture Consultant",
+        "reasoning": "high",
+        "prompt_append": "Handle architecture decisions, distributed systems reasoning, debugging strategy, scalability tradeoffs, and long-term evolution."
+      },
+      "librarian": {
+        "model": "omniroute/{{ omniroute_model_quick }}",
+        "mode": "subagent",
+        "description": "Docs & Evidence Retriever",
+        "reasoning": "low",
+        "prompt_append": "Retrieve official documentation, GitHub examples, API evidence, and concise technical summaries."
+      },
+      "explore": {
+        "model": "omniroute/{{ omniroute_model_quick }}",
+        "mode": "subagent",
+        "description": "Fast Codebase Scanner",
+        "reasoning": "low",
+        "prompt_append": "Rapidly scan the codebase and return only high-signal findings."
+      },
+      "multimodal-looker": {
+        "model": "omniroute/{{ omniroute_model_visual }}",
+        "mode": "subagent",
+        "description": "Vision & UI Analyzer",
+        "reasoning": "high",
+        "prompt_append": "Analyze screenshots, diagrams, UI layouts, UX systems, and visual architectures carefully."
+      },
+      "prometheus": {
+        "model": "omniroute/{{ omniroute_model_heavy }}",
+        "mode": "subagent",
+        "description": "Strategic Planner",
+        "reasoning": "high",
+        "prompt_append": "Analyze architecture deeply. Build phased execution plans. NEVER write implementation code.",
+        "permission": {
+          "edit": "deny",
+          "task": "allow",
+          "doom_loop": "deny"
+        }
+      },
+      "metis": {
+        "model": "omniroute/{{ omniroute_model_daily }}",
+        "mode": "subagent",
+        "description": "Ambiguity Eliminator",
+        "reasoning": "high",
+        "prompt_append": "Identify ambiguity, hidden assumptions, unclear logic, and unnecessary complexity."
+      },
+      "momus": {
+        "model": "omniroute/{{ omniroute_model_daily }}",
+        "mode": "subagent",
+        "description": "Plan Reviewer",
+        "reasoning": "xhigh",
+        "prompt_append": "Ruthlessly validate plans and implementations. Find edge cases, scalability failures, operational risks, and flawed assumptions."
+      },
+      "atlas": {
+        "model": "omniroute/{{ omniroute_model_daily }}",
+        "mode": "subagent",
+        "description": "Master Executor",
+        "prompt_append": "Execute verified plans precisely. Coordinate implementation subtasks. Verify subagent outputs independently.",
+        "tools": {
+          "read_file": true,
+          "write_file": true,
+          "edit_file": true
+        },
+        "permission": {
+          "edit": "allow",
+          "git": "allow",
+          "webfetch": "ask",
+          "task": "allow",
+          "doom_loop": "deny"
+        }
+      },
+      "sisyphus-junior": {
+        "model": "omniroute/{{ omniroute_model_daily }}",
+        "mode": "subagent",
+        "description": "Lightweight Execution Agent",
+        "reasoning": "high",
+        "prompt_append": "Handle lightweight implementation and automation tasks efficiently.",
+        "permission": {
+          "edit": "allow",
+          "webfetch": "allow",
+          "task": "allow",
+          "git": "allow",
+          "doom_loop": "deny"
+        }
+      },
+      "sisyphus": {
+        "mode": "primary",
+        "description": "The CTO Who Never Sleeps",
+        "model": "omniroute/{{ omniroute_model_daily }}",
+        "reasoning": "high",
+        "ultrawork": {
+          "model": "omniroute/{{ omniroute_model_heavy }}",
+          "reasoning": "high"
+        },
+        "prompt_append": "Parse implicit requirements. Assess architecture maturity before action. Delegate intelligently. Verify independently before finalizing.",
+        "permission": {
+          "edit": "allow",
+          "webfetch": "allow",
+          "task": "allow",
+          "git": "allow",
+          "doom_loop": "deny"
+        }
+      }
+    },
+    "categories": {
+      "visual-engineering": { "model": "omniroute/{{ omniroute_model_visual }}", "reasoning": "high", "temperature": 0.8 },
+      "ultrabrain": { "model": "omniroute/{{ omniroute_model_heavy }}", "reasoning": "xhigh" },
+      "deep": { "model": "omniroute/{{ omniroute_model_heavy }}", "reasoning": "high" },
+      "artistry": { "model": "omniroute/{{ omniroute_model_artistry }}", "reasoning": "xhigh", "temperature": 0.6 },
+      "quick": { "model": "omniroute/{{ omniroute_model_quick }}", "reasoning": "low" },
+      "unspecified-low": { "model": "omniroute/{{ omniroute_model_daily }}", "reasoning": "high" },
+      "unspecified-high": { "model": "omniroute/{{ omniroute_model_heavy }}", "reasoning": "xhigh" },
+      "writing": { "model": "omniroute/{{ omniroute_model_writing }}", "reasoning": "medium", "temperature": 0.5 }
+    },
+    "claude_code": {
+      "skills": false,
+      "commands": false,
+      "mcp": false,
+      "agents": false,
+      "hooks": false,
+      "plugins": false
+    },
+    "runtime_fallback": true,
+    "hashline_edit": true,
+    "background_task": {
+      "defaultConcurrency": 5,
+      "providerConcurrency": {},
+      "modelConcurrency": {}
+    },
+    "team_mode": {
+      "enabled": true,
+      "tmux_visualization": false,
+      "max_parallel_members": 2,
+      "max_members": 6,
+      "max_messages_per_run": 10000,
+      "max_wall_clock_minutes": 120,
+      "max_member_turns": 500,
+      "message_payload_max_bytes": 32768,
+      "recipient_unread_max_bytes": 262144,
+      "mailbox_poll_interval_ms": 3000
+    },
+    "git_master": {
+      "commit_footer": false,
+      "include_co_authored_by": false,
+      "git_env_prefix": "GIT_MASTER=1"
+    }
+  },
+  "profiles": {}
+}
